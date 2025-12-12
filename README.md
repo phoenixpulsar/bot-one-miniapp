@@ -3,6 +3,7 @@
 This template demonstrates how developers can implement a single-page
 application on the Telegram Mini Apps platform using the following technologies
 and libraries:
+Minor Change
 
 - [React](https://react.dev/)
 - [TypeScript](https://www.typescriptlang.org/)
@@ -140,7 +141,7 @@ And `vite.config.ts` should have this content:
 
 ```ts
 export default defineConfig({
-  base: '/is-awesome/',
+  base: "/is-awesome/",
   // ...
 });
 ```
