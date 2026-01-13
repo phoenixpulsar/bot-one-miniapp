@@ -45,7 +45,9 @@ jobs:
           run_install: true
 
       - name: Build
-        run: pnpm VITE_API_BASE_URL=https://suzie-pseudophilanthropic-alvin.ngrok-free.dev npm run build
+        run: pnpm run build
+        env:
+          VITE_API_BASE_URL: https://suzie-pseudophilanthropic-alvin.ngrok-free.dev
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
