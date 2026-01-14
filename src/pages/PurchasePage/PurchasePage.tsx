@@ -100,18 +100,63 @@ export const PurchasePage: FC = () => {
   if (!wallet) {
     return (
       <Page back={false}>
-        <Placeholder
-          className={e('placeholder')}
-          header="Connect Wallet"
-          description={
-            <>
-              <Text>
-                Connect your TON wallet to purchase credits
+        <div className={e('landing')}>
+          <div className={e('landing-content')}>
+            <div className={e('hero-icon')}>
+              <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="40" cy="40" r="40" fill="url(#gradient1)"/>
+                <path d="M25 35L40 25L55 35V50L40 60L25 50V35Z" stroke="white" strokeWidth="2.5" fill="none"/>
+                <path d="M40 25V60M25 35L55 50M55 35L25 50" stroke="white" strokeWidth="2" strokeOpacity="0.6"/>
+                <defs>
+                  <linearGradient id="gradient1" x1="0" y1="0" x2="80" y2="80">
+                    <stop stopColor="#0098EA"/>
+                    <stop offset="1" stopColor="#0057B8"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+            
+            <h1 className={e('hero-title')}>Unlock AI Document Power</h1>
+            <p className={e('hero-subtitle')}>
+              Transform your documents with cutting-edge AI. Fast, secure, and powered by TON blockchain.
+            </p>
+            
+            <div className={e('features')}>
+              <div className={e('feature')}>
+                <span className={e('feature-icon')}>&#9889;</span>
+                <div className={e('feature-text')}>
+                  <strong>Lightning Fast</strong>
+                  <span>Process documents in seconds</span>
+                </div>
+              </div>
+              <div className={e('feature')}>
+                <span className={e('feature-icon')}>&#128274;</span>
+                <div className={e('feature-text')}>
+                  <strong>Secure Payments</strong>
+                  <span>TON blockchain protection</span>
+                </div>
+              </div>
+              <div className={e('feature')}>
+                <span className={e('feature-icon')}>&#10024;</span>
+                <div className={e('feature-text')}>
+                  <strong>AI-Powered</strong>
+                  <span>Smart document analysis</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className={e('cta-section')}>
+              <Text className={e('cta-text')}>
+                Connect your wallet to get started
               </Text>
-              <TonConnectButton className={e('button')} />
-            </>
-          }
-        />
+              <TonConnectButton className={e('cta-button')} />
+            </div>
+            
+            <p className={e('trust-badge')}>
+              Trusted by thousands of users worldwide
+            </p>
+          </div>
+        </div>
       </Page>
     );
   }
