@@ -97,6 +97,10 @@ export const PurchasePage: FC = () => {
     setSelectedPack(null);
   }, []);
 
+  const handleDisconnect = useCallback(async () => {
+    await tonConnectUI.disconnect();
+  }, [tonConnectUI]);
+
   if (!wallet) {
     return (
       <Page back={false}>
@@ -250,6 +254,15 @@ export const PurchasePage: FC = () => {
           <Cell
             className={e('wallet-cell')}
             subtitle={wallet.account.address.slice(0, 8) + '...' + wallet.account.address.slice(-6)}
+            after={
+              <Button
+                size="s"
+                mode="outline"
+                onClick={handleDisconnect}
+              >
+                Disconnect
+              </Button>
+            }
           >
             Connected Wallet
           </Cell>
