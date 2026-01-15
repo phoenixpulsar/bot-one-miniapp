@@ -67,10 +67,6 @@ export const PurchasePage: FC = () => {
           {
             address: RECIPIENT_WALLET_ADDRESS,
             amount: pack.tonAmount,
-            payload: btoa(JSON.stringify({
-              telegram_chat_id: chatId,
-              pack: pack.id,
-            })),
           },
         ],
       };
