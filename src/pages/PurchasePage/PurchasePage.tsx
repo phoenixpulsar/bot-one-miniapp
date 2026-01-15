@@ -34,7 +34,7 @@ const CREDIT_PACKS: CreditPack[] = [
   { id: '20', price: 20, credits: 1500, tonAmount: '4000000000' },
 ];
 
-const RECIPIENT_WALLET_ADDRESS = 'UQBvW8Z5huBkMJYdnfAEM5JqTNLuuBrj3PiZ_NqcG5IIpSIs';
+const RECIPIENT_WALLET_ADDRESS = 'UQDI2zTol4URrXtiMhBdtDmDV8QwQ0w86iNMAK67jhbP8_ZE';
 
 type PageState = 'default' | 'loading' | 'success' | 'error';
 
