@@ -29,9 +29,9 @@ interface CreditPack {
 }
 
 const CREDIT_PACKS: CreditPack[] = [
-  { id: '5', price: 5, credits: 200, tonAmount: '1000000000' },
-  { id: '10', price: 10, credits: 500, tonAmount: '2000000000' },
-  { id: '20', price: 20, credits: 1500, tonAmount: '4000000000' },
+  { id: '5', price: 5, credits: 200, tonAmount: '5000000000' },   // 5 TON
+  { id: '10', price: 10, credits: 500, tonAmount: '10000000000' }, // 10 TON
+  { id: '20', price: 20, credits: 1500, tonAmount: '20000000000' }, // 20 TON
 ];
 
 const RECIPIENT_WALLET_ADDRESS = 'UQDI2zTol4URrXtiMhBdtDmDV8QwQ0w86iNMAK67jhbP8_ZE';
