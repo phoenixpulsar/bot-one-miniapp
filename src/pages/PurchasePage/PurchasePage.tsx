@@ -87,6 +87,7 @@ export const PurchasePage: FC = () => {
         telegram_chat_id: chatId,
         tx_hash: txResult.boc,
         amount_ton: pack.price.toString(),
+        sender_address: wallet!.account.address,
       });
 
       setPageState('success');

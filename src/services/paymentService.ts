@@ -2,6 +2,7 @@ export interface PaymentConfirmation {
   telegram_chat_id: string;
   tx_hash: string;
   amount_ton: string;
+  sender_address: string;
 }
 
 export interface PaymentResponse {
