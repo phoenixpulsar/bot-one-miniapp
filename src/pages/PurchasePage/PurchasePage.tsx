@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { FC } from 'react';
+import { Link } from 'react-router-dom';
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 import { TonConnectButton } from '@tonconnect/ui-react';
 import {
@@ -316,6 +317,16 @@ export const PurchasePage: FC = () => {
             }
           >
             Connected Wallet
+          </Cell>
+          <Cell
+            className={e('history-cell')}
+            Component={Link}
+            to="/purchase-history"
+            after={
+              <span className={e('history-arrow')}>&#8250;</span>
+            }
+          >
+            View Purchase History
           </Cell>
         </Section>
       </List>

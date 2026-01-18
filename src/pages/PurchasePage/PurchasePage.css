@@ -167,3 +167,12 @@
 .purchase-page__wallet-cell {
   opacity: 0.8;
 }
+
+.purchase-page__history-cell {
+  cursor: pointer;
+}
+
+.purchase-page__history-arrow {
+  font-size: 18px;
+  color: var(--tg-theme-hint-color, #999);
+}

@@ -6,6 +6,7 @@ import { LaunchParamsPage } from '@/pages/LaunchParamsPage.tsx';
 import { ThemeParamsPage } from '@/pages/ThemeParamsPage.tsx';
 import { TONConnectPage } from '@/pages/TONConnectPage/TONConnectPage';
 import { PurchasePage } from '@/pages/PurchasePage/PurchasePage';
+import { PurchaseHistoryPage } from '@/pages/PurchaseHistoryPage/PurchaseHistoryPage';
 
 interface Route {
   path: string;
@@ -16,6 +17,7 @@ interface Route {
 
 export const routes: Route[] = [
   { path: '/', Component: PurchasePage },
+  { path: '/purchase-history', Component: PurchaseHistoryPage, title: 'Purchase History' },
   { path: '/home', Component: IndexPage, title: 'Home' },
   { path: '/init-data', Component: InitDataPage, title: 'Init Data' },
   { path: '/theme-params', Component: ThemeParamsPage, title: 'Theme Params' },
