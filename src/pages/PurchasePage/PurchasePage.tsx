@@ -36,7 +36,13 @@ const CREDIT_PACKS: CreditPack[] = [
 
 const RECIPIENT_WALLET_ADDRESS = 'UQDI2zTol4URrXtiMhBdtDmDV8QwQ0w86iNMAK67jhbP8_ZE';
 
-type PageState = 'default' | 'loading' | 'success' | 'error';
+type PageState = 'default' | 'loading' | 'success' | 'error' | 'payment_sent_verification_failed';
+
+interface FailedPaymentInfo {
+  txHash: string;
+  amount: number;
+  credits: number;
+}
 
 export const PurchasePage: FC = () => {
   const wallet = useTonWallet();
@@ -46,6 +52,7 @@ export const PurchasePage: FC = () => {
   const [pageState, setPageState] = useState<PageState>('default');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [selectedPack, setSelectedPack] = useState<CreditPack | null>(null);
+  const [failedPaymentInfo, setFailedPaymentInfo] = useState<FailedPaymentInfo | null>(null);
 
   const chatId = initDataState?.user?.id?.toString() || '';
 
@@ -59,6 +66,9 @@ export const PurchasePage: FC = () => {
     setSelectedPack(pack);
     setPageState('loading');
     setErrorMessage('');
+    setFailedPaymentInfo(null);
+
+    let txResult: { boc: string } | null = null;
 
     try {
       const transaction = {
@@ -71,19 +81,30 @@ export const PurchasePage: FC = () => {
         ],
       };
 
-      const result = await tonConnectUI.sendTransaction(transaction);
+      txResult = await tonConnectUI.sendTransaction(transaction);
       
       await confirmPayment({
         telegram_chat_id: chatId,
-        tx_hash: result.boc,
-        amount_ton: pack.tonAmount,
+        tx_hash: txResult.boc,
+        amount_ton: pack.price.toString(),
       });
 
       setPageState('success');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Payment failed. Please try again.';
-      setErrorMessage(message);
-      setPageState('error');
+      
+      if (txResult) {
+        setFailedPaymentInfo({
+          txHash: txResult.boc,
+          amount: pack.price,
+          credits: pack.credits,
+        });
+        setErrorMessage(message);
+        setPageState('payment_sent_verification_failed');
+      } else {
+        setErrorMessage(message);
+        setPageState('error');
+      }
     }
   }, [chatId, tonConnectUI]);
 
@@ -216,6 +237,39 @@ export const PurchasePage: FC = () => {
                 onClick={handleRetry}
               >
                 Try Again
+              </Button>
+            </>
+          }
+        />
+      </Page>
+    );
+  }
+
+  if (pageState === 'payment_sent_verification_failed' && failedPaymentInfo) {
+    return (
+      <Page back={false}>
+        <Placeholder
+          className={e('placeholder')}
+          header="Payment Sent - Verification Issue"
+          description={
+            <>
+              <Text className={e('warning-text')}>
+                Your payment of {failedPaymentInfo.amount} TON was sent successfully, but we encountered an issue verifying it.
+              </Text>
+              <Text className={e('info-text')}>
+                Your {failedPaymentInfo.credits} credits will be added once verification completes. This usually resolves within a few minutes.
+              </Text>
+              <Text className={e('tx-info')}>
+                Transaction ID: {failedPaymentInfo.txHash.slice(0, 16)}...
+              </Text>
+              <Text className={e('support-text')}>
+                If credits are not added within 10 minutes, please contact support with your transaction ID.
+              </Text>
+              <Button
+                className={e('retry-button')}
+                onClick={handleRetry}
+              >
+                Return to Purchase
               </Button>
             </>
           }
