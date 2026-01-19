@@ -168,6 +168,12 @@
   opacity: 0.8;
 }
 
+.purchase-page__history-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
 .purchase-page__history-cell {
   cursor: pointer;
 }
