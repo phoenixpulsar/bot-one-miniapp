@@ -318,16 +318,16 @@ export const PurchasePage: FC = () => {
           >
             Connected Wallet
           </Cell>
-          <Cell
-            className={e('history-cell')}
-            Component={Link}
-            to="/purchase-history"
-            after={
-              <span className={e('history-arrow')}>&#8250;</span>
-            }
-          >
-            View Purchase History
-          </Cell>
+          <Link to="/purchase-history" className={e('history-link')}>
+            <Cell
+              className={e('history-cell')}
+              after={
+                <span className={e('history-arrow')}>&#8250;</span>
+              }
+            >
+              View Purchase History
+            </Cell>
+          </Link>
         </Section>
       </List>
     </Page>
