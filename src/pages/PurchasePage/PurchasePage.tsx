@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { FC } from 'react';
 import { Link } from 'react-router-dom';
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
@@ -16,7 +16,7 @@ import { initData, useSignal } from '@tma.js/sdk-react';
 
 import { Page } from '@/components/Page.tsx';
 import { bem } from '@/css/bem.ts';
-import { confirmPayment } from '@/services/paymentService.ts';
+import { confirmPayment, retryPaymentVerification } from '@/services/paymentService.ts';
 
 import './PurchasePage.css';
 
@@ -45,6 +45,9 @@ interface FailedPaymentInfo {
   credits: number;
 }
 
+const POLLING_INTERVAL_MS = 30000;
+const MAX_POLLING_DURATION_MS = 5 * 60 * 1000;
+
 export const PurchasePage: FC = () => {
   const wallet = useTonWallet();
   const [tonConnectUI] = useTonConnectUI();
@@ -54,6 +57,11 @@ export const PurchasePage: FC = () => {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [selectedPack, setSelectedPack] = useState<CreditPack | null>(null);
   const [failedPaymentInfo, setFailedPaymentInfo] = useState<FailedPaymentInfo | null>(null);
+  const [pollingStatus, setPollingStatus] = useState<string>('');
+  const [retryCount, setRetryCount] = useState<number>(0);
+  
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingStartTimeRef = useRef<number | null>(null);
 
   const chatId = initDataState?.user?.id?.toString() || '';
 
@@ -110,15 +118,77 @@ export const PurchasePage: FC = () => {
     }
   }, [chatId, tonConnectUI]);
 
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    pollingStartTimeRef.current = null;
+    setPollingStatus('');
+    setRetryCount(0);
+  }, []);
+
   const handleRetry = useCallback(() => {
+    stopPolling();
     setPageState('default');
     setErrorMessage('');
     setSelectedPack(null);
-  }, []);
+    setFailedPaymentInfo(null);
+  }, [stopPolling]);
 
   const handleDisconnect = useCallback(async () => {
+    stopPolling();
     await tonConnectUI.disconnect();
-  }, [tonConnectUI]);
+  }, [tonConnectUI, stopPolling]);
+
+  useEffect(() => {
+    if (pageState !== 'payment_sent_verification_failed' || !failedPaymentInfo || !chatId) {
+      return;
+    }
+
+    pollingStartTimeRef.current = Date.now();
+    setPollingStatus('Verifying payment...');
+
+    const attemptRetry = async () => {
+      const elapsedTime = Date.now() - (pollingStartTimeRef.current || Date.now());
+      
+      if (elapsedTime >= MAX_POLLING_DURATION_MS) {
+        stopPolling();
+        setPollingStatus('Verification timed out. Please contact support.');
+        return;
+      }
+
+      try {
+        setRetryCount(prev => prev + 1);
+        const result = await retryPaymentVerification({
+          telegram_chat_id: chatId,
+          tx_hash: failedPaymentInfo.txHash,
+        });
+
+        if (result.success || result.already_completed) {
+          stopPolling();
+          setPageState('success');
+          return;
+        }
+
+        if (result.retry) {
+          const remainingTime = Math.ceil((MAX_POLLING_DURATION_MS - elapsedTime) / 1000);
+          setPollingStatus(`Waiting for blockchain confirmation... (${remainingTime}s remaining)`);
+        }
+      } catch (error) {
+        const remainingTime = Math.ceil((MAX_POLLING_DURATION_MS - elapsedTime) / 1000);
+        setPollingStatus(`Retrying verification... (${remainingTime}s remaining)`);
+      }
+    };
+
+    attemptRetry();
+
+    pollingIntervalRef.current = setInterval(attemptRetry, POLLING_INTERVAL_MS);
+
+    return () => {
+      stopPolling();
+    };
+  }, [pageState, failedPaymentInfo, chatId, stopPolling]);
 
   if (!wallet) {
     return (
@@ -252,20 +322,34 @@ export const PurchasePage: FC = () => {
       <Page back={false}>
         <Placeholder
           className={e('placeholder')}
-          header="Payment Sent - Verification Issue"
+          header="Payment Sent - Verifying"
           description={
             <>
               <Text className={e('warning-text')}>
-                Your payment of {failedPaymentInfo.amount} TON was sent successfully, but we encountered an issue verifying it.
+                Your payment of {failedPaymentInfo.amount} TON was sent successfully.
               </Text>
-              <Text className={e('info-text')}>
-                Your {failedPaymentInfo.credits} credits will be added once verification completes. This usually resolves within a few minutes.
-              </Text>
+              {pollingStatus ? (
+                <>
+                  <Spinner size="m" className={e('polling-spinner')} />
+                  <Text className={e('polling-status')}>
+                    {pollingStatus}
+                  </Text>
+                  {retryCount > 0 && (
+                    <Text className={e('retry-count')}>
+                      Verification attempts: {retryCount}
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <Text className={e('info-text')}>
+                  Your {failedPaymentInfo.credits} credits will be added once verification completes.
+                </Text>
+              )}
               <Text className={e('tx-info')}>
                 Transaction ID: {failedPaymentInfo.txHash.slice(0, 16)}...
               </Text>
               <Text className={e('support-text')}>
-                If credits are not added within 10 minutes, please contact support with your transaction ID.
+                If credits are not added within 5 minutes, please contact support with your transaction ID.
               </Text>
               <Button
                 className={e('retry-button')}
