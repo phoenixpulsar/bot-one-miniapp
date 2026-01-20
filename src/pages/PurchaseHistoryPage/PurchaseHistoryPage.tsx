@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { FC } from 'react';
 import {
+  Button,
   Cell,
   List,
   Placeholder,
@@ -89,11 +90,19 @@ export const PurchaseHistoryPage: FC = () => {
       <Page back={true}>
         <Placeholder
           className={e('placeholder')}
-          header="Error"
+          header="Unable to Load History"
           description={
-            <Text className={e('error-text')}>
-              {error}
-            </Text>
+            <div className={e('error-content')}>
+              <Text className={e('error-text')}>
+                We couldn't load your purchase history right now. This might be a temporary issue.
+              </Text>
+              <Button
+                className={e('retry-button')}
+                onClick={fetchHistory}
+              >
+                Try Again
+              </Button>
+            </div>
           }
         />
       </Page>

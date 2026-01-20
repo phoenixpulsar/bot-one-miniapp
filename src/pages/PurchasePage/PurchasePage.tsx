@@ -58,7 +58,6 @@ export const PurchasePage: FC = () => {
   const [selectedPack, setSelectedPack] = useState<CreditPack | null>(null);
   const [failedPaymentInfo, setFailedPaymentInfo] = useState<FailedPaymentInfo | null>(null);
   const [pollingStatus, setPollingStatus] = useState<string>('');
-  const [retryCount, setRetryCount] = useState<number>(0);
   
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingStartTimeRef = useRef<number | null>(null);
@@ -125,7 +124,6 @@ export const PurchasePage: FC = () => {
     }
     pollingStartTimeRef.current = null;
     setPollingStatus('');
-    setRetryCount(0);
   }, []);
 
   const handleRetry = useCallback(() => {
@@ -159,7 +157,6 @@ export const PurchasePage: FC = () => {
       }
 
       try {
-        setRetryCount(prev => prev + 1);
         const result = await retryPaymentVerification({
           telegram_chat_id: chatId,
           tx_hash: failedPaymentInfo.txHash,
@@ -318,46 +315,77 @@ export const PurchasePage: FC = () => {
   }
 
   if (pageState === 'payment_sent_verification_failed' && failedPaymentInfo) {
+    const formatRemainingTime = (seconds: number) => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      if (mins > 0) {
+        return `${mins}m ${secs}s`;
+      }
+      return `${secs}s`;
+    };
+
+    const getPollingMessage = () => {
+      if (!pollingStatus) return null;
+      if (pollingStatus.includes('timed out')) {
+        return 'Verification timed out. Please contact support.';
+      }
+      const match = pollingStatus.match(/\((\d+)s remaining\)/);
+      if (match) {
+        const remainingSecs = parseInt(match[1], 10);
+        return `Confirming on blockchain... ${formatRemainingTime(remainingSecs)} remaining`;
+      }
+      return 'Verifying payment...';
+    };
+
+    const pollingMessage = getPollingMessage();
+    const isTimedOut = pollingStatus?.includes('timed out');
+
     return (
       <Page back={false}>
         <Placeholder
           className={e('placeholder')}
-          header="Payment Sent - Verifying"
+          header={isTimedOut ? 'Verification Timed Out' : 'Verifying Payment'}
           description={
-            <>
-              <Text className={e('warning-text')}>
-                Your payment of {failedPaymentInfo.amount} TON was sent successfully.
+            <div className={e('verification-content')}>
+              <Text className={e('success-text')}>
+                Your payment of {failedPaymentInfo.amount} TON was sent successfully!
               </Text>
-              {pollingStatus ? (
-                <>
+              
+              {pollingMessage && !isTimedOut && (
+                <div className={e('polling-section')}>
                   <Spinner size="m" className={e('polling-spinner')} />
-                  <Text className={e('polling-status')}>
-                    {pollingStatus}
+                  <Text className={e('polling-message')}>
+                    {pollingMessage}
                   </Text>
-                  {retryCount > 0 && (
-                    <Text className={e('retry-count')}>
-                      Verification attempts: {retryCount}
-                    </Text>
-                  )}
-                </>
-              ) : (
-                <Text className={e('info-text')}>
-                  Your {failedPaymentInfo.credits} credits will be added once verification completes.
+                </div>
+              )}
+
+              {isTimedOut && (
+                <Text className={e('timeout-message')}>
+                  We couldn't verify your payment automatically. Don't worry - your credits will be added once the transaction is confirmed on the blockchain.
                 </Text>
               )}
-              <Text className={e('tx-info')}>
-                Transaction ID: {failedPaymentInfo.txHash.slice(0, 16)}...
-              </Text>
+
+              <div className={e('tx-section')}>
+                <Text className={e('tx-label')}>Transaction ID:</Text>
+                <Text className={e('tx-hash')}>
+                  {failedPaymentInfo.txHash.slice(0, 12)}...
+                </Text>
+              </div>
+
               <Text className={e('support-text')}>
-                If credits are not added within 5 minutes, please contact support with your transaction ID.
+                {isTimedOut 
+                  ? 'Please save your transaction ID and contact support if credits are not added within 10 minutes.'
+                  : 'Your credits will be added automatically once confirmed.'}
               </Text>
+
               <Button
                 className={e('retry-button')}
                 onClick={handleRetry}
               >
-                Return to Purchase
+                {isTimedOut ? 'Back to Purchase' : 'Cancel & Return'}
               </Button>
-            </>
+            </div>
           }
         />
       </Page>
