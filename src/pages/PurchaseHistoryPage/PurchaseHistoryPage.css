@@ -9,6 +9,11 @@
 
 .purchase-history-page__error-text {
   color: var(--tg-theme-destructive-text-color, #ff3b30);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 90%;
+  margin: 0 auto 16px;
+  padding: 12px;
 }
 
 .purchase-history-page__payment-cell {
