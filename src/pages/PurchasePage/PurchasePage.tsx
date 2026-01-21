@@ -273,6 +273,7 @@ export const PurchasePage: FC = () => {
   }
 
   if (pageState === 'success') {
+    const creditsAmount = selectedPack?.credits ?? failedPaymentInfo?.credits;
     return (
       <Page back={false}>
         <Placeholder
@@ -281,7 +282,7 @@ export const PurchasePage: FC = () => {
           description={
             <>
               <Text>
-                {selectedPack?.credits} credits have been added to your account.
+                {creditsAmount} credits have been added to your account.
               </Text>
               <Text className={e('return-text')}>
                 Return to the bot to start using your credits.

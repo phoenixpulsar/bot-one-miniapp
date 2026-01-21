@@ -56,7 +56,7 @@ export async function confirmPayment(data: PaymentConfirmation): Promise<Payment
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Payment confirmation failed: ${response.status}`);
+    throw new Error(errorData.error || `Payment confirmation failed: ${response.status}`);
   }
 
   return response.json();
