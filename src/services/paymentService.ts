@@ -43,6 +43,19 @@ export interface PaymentStatusResponse {
   created_at: string;
 }
 
+export interface DirectPurchaseRequest {
+  telegram_chat_id: string;
+  amount_ton: string;
+  credits: number;
+}
+
+export interface DirectPurchaseResponse {
+  success: boolean;
+  credits_granted: number;
+  new_balance: number;
+  tx_hash: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export async function confirmPayment(data: PaymentConfirmation): Promise<PaymentResponse> {
@@ -124,6 +137,23 @@ export async function getPaymentStatus(telegram_chat_id: string, tx_hash: string
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Failed to get payment status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function directPurchase(data: DirectPurchaseRequest): Promise<DirectPurchaseResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/payments/direct`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Direct purchase failed: ${response.status}`);
   }
 
   return response.json();

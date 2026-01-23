@@ -16,7 +16,7 @@ import { initData, useSignal } from '@tma.js/sdk-react';
 
 import { Page } from '@/components/Page.tsx';
 import { bem } from '@/css/bem.ts';
-import { confirmPayment, retryPaymentVerification } from '@/services/paymentService.ts';
+import { confirmPayment, retryPaymentVerification, directPurchase } from '@/services/paymentService.ts';
 
 import './PurchasePage.css';
 
@@ -30,6 +30,7 @@ interface CreditPack {
 }
 
 const CREDIT_PACKS: CreditPack[] = [
+  { id: '1', price: 1, credits: 100, tonAmount: '1000000000' },   // 1 TON - Direct
   { id: '5', price: 5, credits: 200, tonAmount: '5000000000' },   // 5 TON
   { id: '10', price: 10, credits: 500, tonAmount: '10000000000' }, // 10 TON
   { id: '20', price: 20, credits: 1500, tonAmount: '20000000000' }, // 20 TON
@@ -64,6 +65,31 @@ export const PurchasePage: FC = () => {
   const pollingStartTimeRef = useRef<number | null>(null);
 
   const chatId = initDataState?.user?.id?.toString() || '';
+
+  const handleDirectPurchase = useCallback(async (pack: CreditPack) => {
+    if (!chatId) {
+      setErrorMessage('Unable to identify user. Please restart the app from Telegram.');
+      setPageState('error');
+      return;
+    }
+
+    setSelectedPack(pack);
+    setPageState('loading');
+    setErrorMessage('');
+
+    try {
+      await directPurchase({
+        telegram_chat_id: chatId,
+        amount_ton: pack.price.toString(),
+        credits: pack.credits
+      });
+
+      setPageState('success');
+    } catch (error) {
+      setErrorMessage('Direct purchase failed. Please try again.');
+      setPageState('error');
+    }
+  }, [chatId]);
 
   const handlePurchase = useCallback(async (pack: CreditPack) => {
     if (!chatId) {
@@ -377,13 +403,13 @@ export const PurchasePage: FC = () => {
               after={
                 <Button
                   size="s"
-                  onClick={() => handlePurchase(pack)}
+                  onClick={() => pack.id === '1' ? handleDirectPurchase(pack) : handlePurchase(pack)}
                 >
                   ${pack.price}
                 </Button>
               }
             >
-              ${pack.price} Pack
+              ${pack.price} Pack {pack.id === '1' && '(Direct)'}
             </Cell>
           ))}
         </Section>
