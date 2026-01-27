@@ -1,8 +1,8 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import type { FC } from 'react';
-import { Link } from 'react-router-dom';
-import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
-import { TonConnectButton } from '@tonconnect/ui-react';
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { FC } from "react";
+import { Link } from "react-router-dom";
+import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
+import { TonConnectButton } from "@tonconnect/ui-react";
 import {
   Button,
   Cell,
@@ -11,16 +11,20 @@ import {
   Section,
   Spinner,
   Text,
-} from '@telegram-apps/telegram-ui';
-import { initData, useSignal } from '@tma.js/sdk-react';
+} from "@telegram-apps/telegram-ui";
+import { initData, useSignal } from "@tma.js/sdk-react";
 
-import { Page } from '@/components/Page.tsx';
-import { bem } from '@/css/bem.ts';
-import { confirmPayment, retryPaymentVerification } from '@/services/paymentService.ts';
+import { Page } from "@/components/Page.tsx";
+import { bem } from "@/css/bem.ts";
+import {
+  confirmPayment,
+  retryPaymentVerification,
+  PaymentServiceError,
+} from "@/services/paymentService.ts";
 
-import './PurchasePage.css';
+import "./PurchasePage.css";
 
-const [, e] = bem('purchase-page');
+const [, e] = bem("purchase-page");
 
 interface CreditPack {
   id: string;
@@ -30,263 +34,371 @@ interface CreditPack {
 }
 
 const CREDIT_PACKS: CreditPack[] = [
-  { id: '5', price: 5, credits: 200, tonAmount: '5000000000' },   // 5 TON
-  { id: '10', price: 10, credits: 500, tonAmount: '10000000000' }, // 10 TON
-  { id: '20', price: 20, credits: 1500, tonAmount: '20000000000' }, // 20 TON
+  { id: "5", price: 5, credits: 200, tonAmount: "5000000000" },
+  { id: "10", price: 10, credits: 500, tonAmount: "10000000000" },
+  { id: "20", price: 20, credits: 1500, tonAmount: "20000000000" },
 ];
 
-const RECIPIENT_WALLET_ADDRESS = 'UQDI2zTol4URrXtiMhBdtDmDV8QwQ0w86iNMAK67jhbP8_ZE';
+const RECIPIENT_WALLET_ADDRESS =
+  "UQDI2zTol4URrXtiMhBdtDmDV8QwQ0w86iNMAK67jhbP8_ZE";
 
-type PageState = 'default' | 'loading' | 'success' | 'error' | 'payment_sent_verification_failed';
+type PageState = "default" | "loading" | "success" | "error" | "verifying";
 
-interface FailedPaymentInfo {
+interface PaymentInfo {
   txHash: string;
   amount: number;
   credits: number;
 }
 
-const POLLING_INTERVAL_MS = 30000;
-const MAX_POLLING_DURATION_MS = 5 * 60 * 1000;
+// Retry configuration
+const INITIAL_RETRY_DELAY = 5000; // 5 seconds
+const MAX_RETRY_DELAY = 30000; // 30 seconds
+const MAX_RETRIES = 20; // ~5 minutes total with exponential backoff
+const BLOCKCHAIN_CONFIRMATION_TIME = 30000; // Wait 30s before first retry
 
 export const PurchasePage: FC = () => {
   const wallet = useTonWallet();
   const [tonConnectUI] = useTonConnectUI();
   const initDataState = useSignal(initData.state);
-  
-  const [pageState, setPageState] = useState<PageState>('default');
-  const [errorMessage, setErrorMessage] = useState<string>('');
+
+  const [pageState, setPageState] = useState<PageState>("default");
+  const [errorMessage, setErrorMessage] = useState<string>("");
   const [selectedPack, setSelectedPack] = useState<CreditPack | null>(null);
-  const [failedPaymentInfo, setFailedPaymentInfo] = useState<FailedPaymentInfo | null>(null);
-  const [pollingStatus, setPollingStatus] = useState<string>('');
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
-  
-  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollingStartTimeRef = useRef<number | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<number>(0);
 
-  const chatId = initDataState?.user?.id?.toString() || '';
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const chatId = initDataState?.user?.id?.toString() || "";
 
-  const handlePurchase = useCallback(async (pack: CreditPack) => {
-    if (!chatId) {
-      setErrorMessage('Unable to identify user. Please restart the app from Telegram.');
-      setPageState('error');
-      return;
+  // Cleanup function
+  const cleanup = useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
     }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setRetryCount(0);
+    setTimeRemaining(0);
+  }, []);
 
-    setSelectedPack(pack);
-    setPageState('loading');
-    setErrorMessage('');
-    setFailedPaymentInfo(null);
+  // Exponential backoff calculation
+  const getRetryDelay = (attemptNumber: number): number => {
+    const delay = Math.min(
+      INITIAL_RETRY_DELAY * Math.pow(1.5, attemptNumber),
+      MAX_RETRY_DELAY,
+    );
+    return Math.floor(delay);
+  };
 
-    let txResult: { boc: string } | null = null;
+  // Retry verification logic
+  const attemptVerification = useCallback(
+    async (txHash: string, attemptNumber: number): Promise<boolean> => {
+      if (!chatId || attemptNumber >= MAX_RETRIES) {
+        setPageState("error");
+        setErrorMessage(
+          "Verification timeout. Please contact support with your transaction ID.",
+        );
+        return false;
+      }
 
-    try {
-      const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 360,
-        messages: [
-          {
-            address: RECIPIENT_WALLET_ADDRESS,
-            amount: pack.tonAmount,
-          },
-        ],
-      };
+      try {
+        const result = await retryPaymentVerification({
+          telegram_chat_id: chatId,
+          tx_hash: txHash,
+        });
 
-      txResult = await tonConnectUI.sendTransaction(transaction);
-      
-      await confirmPayment({
-        telegram_chat_id: chatId,
-        tx_hash: txResult.boc,
-        amount_ton: pack.price.toString(),
-        sender_address: wallet!.account.address,
-      });
+        if (result.success || result.already_completed) {
+          cleanup();
+          setPageState("success");
+          return true;
+        }
 
-      setPageState('success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Payment failed. Please try again.';
-      
-      if (txResult) {
-        setFailedPaymentInfo({
+        return false;
+      } catch (error) {
+        if (error instanceof PaymentServiceError && error.retry) {
+          // Schedule next retry with exponential backoff
+          const delay = getRetryDelay(attemptNumber);
+          setTimeRemaining(Math.ceil(delay / 1000));
+
+          // Update countdown every second
+          countdownIntervalRef.current = setInterval(() => {
+            setTimeRemaining((prev) => Math.max(0, prev - 1));
+          }, 1000);
+
+          retryTimeoutRef.current = setTimeout(() => {
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+            }
+            setRetryCount(attemptNumber + 1);
+            attemptVerification(txHash, attemptNumber + 1);
+          }, delay);
+
+          return false;
+        }
+
+        // Non-retryable error
+        cleanup();
+        setPageState("error");
+        setErrorMessage(
+          error instanceof Error ? error.message : "Verification failed",
+        );
+        return false;
+      }
+    },
+    [chatId, cleanup],
+  );
+
+  // Handle purchase
+  const handlePurchase = useCallback(
+    async (pack: CreditPack) => {
+      if (!chatId) {
+        setErrorMessage("Unable to identify user. Please restart the app.");
+        setPageState("error");
+        return;
+      }
+
+      if (!wallet) {
+        setErrorMessage("Please connect your wallet first.");
+        setPageState("error");
+        return;
+      }
+
+      cleanup();
+      setSelectedPack(pack);
+      setPageState("loading");
+      setErrorMessage("");
+      setPaymentInfo(null);
+
+      let txResult: { boc: string } | null = null;
+
+      try {
+        // Send transaction through wallet
+        const transaction = {
+          validUntil: Math.floor(Date.now() / 1000) + 360, // 6 minutes
+          messages: [
+            {
+              address: RECIPIENT_WALLET_ADDRESS,
+              amount: pack.tonAmount,
+            },
+          ],
+        };
+
+        txResult = await tonConnectUI.sendTransaction(transaction);
+
+        setPaymentInfo({
           txHash: txResult.boc,
           amount: pack.price,
           credits: pack.credits,
         });
-        setErrorMessage(message);
-        setPageState('payment_sent_verification_failed');
-      } else {
-        setErrorMessage(message);
-        setPageState('error');
-      }
-    }
-  }, [chatId, tonConnectUI]);
 
-  const stopPolling = useCallback(() => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-    pollingStartTimeRef.current = null;
-    setPollingStatus('');
-    setRetryCount(0);
-  }, []);
+        // Try immediate verification
+        try {
+          await confirmPayment({
+            telegram_chat_id: chatId,
+            tx_hash: txResult.boc,
+            amount_ton: pack.price.toString(),
+            sender_address: wallet.account.address,
+          });
 
-  const handleRetry = useCallback(() => {
-    stopPolling();
-    setPageState('default');
-    setErrorMessage('');
-    setSelectedPack(null);
-    setFailedPaymentInfo(null);
-  }, [stopPolling]);
-
-  const handleDisconnect = useCallback(async () => {
-    stopPolling();
-    await tonConnectUI.disconnect();
-  }, [tonConnectUI, stopPolling]);
-
-  useEffect(() => {
-    if (pageState !== 'payment_sent_verification_failed' || !failedPaymentInfo || !chatId) {
-      return;
-    }
-
-    pollingStartTimeRef.current = Date.now();
-    setPollingStatus('Verifying payment...');
-
-    const attemptRetry = async () => {
-      const elapsedTime = Date.now() - (pollingStartTimeRef.current || Date.now());
-      
-      if (elapsedTime >= MAX_POLLING_DURATION_MS) {
-        stopPolling();
-        setPollingStatus('Verification timed out. Please contact support.');
-        return;
-      }
-
-      try {
-        setRetryCount(prev => prev + 1);
-        const result = await retryPaymentVerification({
-          telegram_chat_id: chatId,
-          tx_hash: failedPaymentInfo.txHash,
-        });
-
-        if (result.success || result.already_completed) {
-          stopPolling();
-          setPageState('success');
+          // Success on first try
+          setPageState("success");
           return;
-        }
+        } catch (error) {
+          // If transaction not found, start retry loop
+          if (error instanceof PaymentServiceError && error.retry) {
+            setPageState("verifying");
 
-        if (result.retry) {
-          const remainingTime = Math.ceil((MAX_POLLING_DURATION_MS - elapsedTime) / 1000);
-          setPollingStatus(`Waiting for blockchain confirmation... (${remainingTime}s remaining)`);
+            // Wait for blockchain confirmation before starting retries
+            setTimeout(() => {
+              setRetryCount(0);
+              attemptVerification(txResult!.boc, 0);
+            }, BLOCKCHAIN_CONFIRMATION_TIME);
+
+            return;
+          }
+
+          // Other errors
+          throw error;
         }
       } catch (error) {
-        const remainingTime = Math.ceil((MAX_POLLING_DURATION_MS - elapsedTime) / 1000);
-        setPollingStatus(`Retrying verification... (${remainingTime}s remaining)`);
+        cleanup();
+
+        if (txResult) {
+          // Transaction was sent but verification failed
+          setPaymentInfo({
+            txHash: txResult.boc,
+            amount: pack.price,
+            credits: pack.credits,
+          });
+          setPageState("error");
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Transaction sent but verification failed. Please contact support.",
+          );
+        } else {
+          // Transaction was not sent (user cancelled or error)
+          setPageState("error");
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Transaction failed. Please try again.",
+          );
+        }
       }
-    };
+    },
+    [chatId, wallet, tonConnectUI, cleanup, attemptVerification],
+  );
 
-    attemptRetry();
+  // Reset to default state
+  const handleReset = useCallback(() => {
+    cleanup();
+    setPageState("default");
+    setErrorMessage("");
+    setSelectedPack(null);
+    setPaymentInfo(null);
+  }, [cleanup]);
 
-    pollingIntervalRef.current = setInterval(attemptRetry, POLLING_INTERVAL_MS);
+  // Disconnect wallet
+  const handleDisconnect = useCallback(async () => {
+    cleanup();
+    await tonConnectUI.disconnect();
+  }, [tonConnectUI, cleanup]);
 
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
-      stopPolling();
+      cleanup();
     };
-  }, [pageState, failedPaymentInfo, chatId, stopPolling]);
+  }, [cleanup]);
 
+  // Landing page (no wallet connected)
   if (!wallet) {
     return (
       <Page back={false}>
-        <div className={e('landing')}>
-          <div className={e('landing-content')}>
-            <div className={e('hero-icon')}>
-              <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="40" cy="40" r="40" fill="url(#gradient1)"/>
-                <path d="M25 35L40 25L55 35V50L40 60L25 50V35Z" stroke="white" strokeWidth="2.5" fill="none"/>
-                <path d="M40 25V60M25 35L55 50M55 35L25 50" stroke="white" strokeWidth="2" strokeOpacity="0.6"/>
+        <div className={e("landing")}>
+          <div className={e("landing-content")}>
+            <div className={e("hero-icon")}>
+              <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+                <circle cx="40" cy="40" r="40" fill="url(#gradient1)" />
+                <path
+                  d="M25 35L40 25L55 35V50L40 60L25 50V35Z"
+                  stroke="white"
+                  strokeWidth="2.5"
+                  fill="none"
+                />
+                <path
+                  d="M40 25V60M25 35L55 50M55 35L25 50"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeOpacity="0.6"
+                />
                 <defs>
                   <linearGradient id="gradient1" x1="0" y1="0" x2="80" y2="80">
-                    <stop stopColor="#0098EA"/>
-                    <stop offset="1" stopColor="#0057B8"/>
+                    <stop stopColor="#0098EA" />
+                    <stop offset="1" stopColor="#0057B8" />
                   </linearGradient>
                 </defs>
               </svg>
             </div>
-            
-            <h1 className={e('hero-title')}>Unlock AI Document Power</h1>
-            <p className={e('hero-subtitle')}>
-              Transform your documents with cutting-edge AI. Fast, secure, and powered by TON blockchain.
+
+            <h1 className={e("hero-title")}>Unlock AI Document Power</h1>
+            <p className={e("hero-subtitle")}>
+              Transform your documents with cutting-edge AI. Fast, secure,
+              powered by TON.
             </p>
-            
-            <div className={e('features')}>
-              <div className={e('feature')}>
-                <span className={e('feature-icon')}>&#9889;</span>
-                <div className={e('feature-text')}>
+
+            <div className={e("features")}>
+              <div className={e("feature")}>
+                <span className={e("feature-icon")}>⚡</span>
+                <div className={e("feature-text")}>
                   <strong>Lightning Fast</strong>
-                  <span>Process documents in seconds</span>
+                  <span>Process in seconds</span>
                 </div>
               </div>
-              <div className={e('feature')}>
-                <span className={e('feature-icon')}>&#128274;</span>
-                <div className={e('feature-text')}>
+              <div className={e("feature")}>
+                <span className={e("feature-icon")}>🔒</span>
+                <div className={e("feature-text")}>
                   <strong>Secure Payments</strong>
-                  <span>TON blockchain protection</span>
+                  <span>TON blockchain</span>
                 </div>
               </div>
-              <div className={e('feature')}>
-                <span className={e('feature-icon')}>&#10024;</span>
-                <div className={e('feature-text')}>
+              <div className={e("feature")}>
+                <span className={e("feature-icon")}>✨</span>
+                <div className={e("feature-text")}>
                   <strong>AI-Powered</strong>
-                  <span>Smart document analysis</span>
+                  <span>Smart analysis</span>
                 </div>
               </div>
             </div>
-            
-            <div className={e('cta-section')}>
-              <Text className={e('cta-text')}>
+
+            <div className={e("cta-section")}>
+              <Text className={e("cta-text")}>
                 Connect your wallet to get started
               </Text>
-              <TonConnectButton className={e('cta-button')} />
+              <TonConnectButton className={e("cta-button")} />
             </div>
-            
-            <p className={e('trust-badge')}>
-              Trusted by thousands of users worldwide
-            </p>
+
+            <p className={e("trust-badge")}>Trusted by thousands worldwide</p>
           </div>
         </div>
       </Page>
     );
   }
 
-  if (pageState === 'loading') {
+  // Loading state
+  if (pageState === "loading") {
     return (
       <Page back={false}>
         <Placeholder
-          className={e('placeholder')}
-          header="Processing Payment"
-          description={
-            <Text>
-              Please confirm the transaction in your wallet...
-            </Text>
-          }
+          header="Sending Transaction"
+          description="Please confirm in your wallet..."
         >
-          <Spinner size="l" className={e('spinner')} />
+          <Spinner size="l" />
         </Placeholder>
       </Page>
     );
   }
 
-  if (pageState === 'success') {
-    const creditsAmount = selectedPack?.credits ?? failedPaymentInfo?.credits;
+  // Verifying state
+  if (pageState === "verifying") {
+    const creditsAmount = selectedPack?.credits || paymentInfo?.credits;
     return (
       <Page back={false}>
         <Placeholder
-          className={e('placeholder')}
-          header="Payment Successful!"
+          header="Verifying Payment"
           description={
             <>
               <Text>
-                {creditsAmount} credits have been added to your account.
+                Your payment of {selectedPack?.price || paymentInfo?.amount} TON
+                was sent successfully.
               </Text>
-              <Text className={e('return-text')}>
-                Return to the bot to start using your credits.
+              <Spinner size="m" style={{ margin: "16px 0" }} />
+              <Text>
+                Waiting for blockchain confirmation...
+                {retryCount > 0 &&
+                  ` (Attempt ${retryCount + 1}/${MAX_RETRIES})`}
               </Text>
+              {timeRemaining > 0 && (
+                <Text className={e("countdown")}>
+                  Next check in {timeRemaining}s
+                </Text>
+              )}
+              <Text className={e("info-text")}>
+                {creditsAmount} credits will be added once verified.
+              </Text>
+              {paymentInfo && (
+                <Text className={e("tx-info")}>
+                  TX: {paymentInfo.txHash.slice(0, 16)}...
+                </Text>
+              )}
             </>
           }
         />
@@ -294,21 +406,48 @@ export const PurchasePage: FC = () => {
     );
   }
 
-  if (pageState === 'error') {
+  // Success state
+  if (pageState === "success") {
+    const creditsAmount = selectedPack?.credits || paymentInfo?.credits;
     return (
       <Page back={false}>
         <Placeholder
-          className={e('placeholder')}
-          header="Payment Failed"
+          header="Payment Successful! 🎉"
           description={
             <>
-              <Text className={e('error-text')}>
-                {errorMessage}
-              </Text>
-              <Button
-                className={e('retry-button')}
-                onClick={handleRetry}
-              >
+              <Text>{creditsAmount} credits added to your account.</Text>
+              <Text>Return to the bot to start using your credits.</Text>
+              <Button onClick={handleReset} style={{ marginTop: "16px" }}>
+                Purchase More Credits
+              </Button>
+            </>
+          }
+        />
+      </Page>
+    );
+  }
+
+  // Error state
+  if (pageState === "error") {
+    return (
+      <Page back={false}>
+        <Placeholder
+          header="Payment Issue"
+          description={
+            <>
+              <Text className={e("error-text")}>{errorMessage}</Text>
+              {paymentInfo && (
+                <>
+                  <Text className={e("tx-info")}>
+                    Transaction ID: {paymentInfo.txHash.slice(0, 16)}...
+                  </Text>
+                  <Text className={e("support-text")}>
+                    Please contact support with this transaction ID if credits
+                    are not added within 10 minutes.
+                  </Text>
+                </>
+              )}
+              <Button onClick={handleReset} style={{ marginTop: "16px" }}>
                 Try Again
               </Button>
             </>
@@ -318,53 +457,7 @@ export const PurchasePage: FC = () => {
     );
   }
 
-  if (pageState === 'payment_sent_verification_failed' && failedPaymentInfo) {
-    return (
-      <Page back={false}>
-        <Placeholder
-          className={e('placeholder')}
-          header="Payment Sent - Verifying"
-          description={
-            <>
-              <Text className={e('warning-text')}>
-                Your payment of {failedPaymentInfo.amount} TON was sent successfully.
-              </Text>
-              {pollingStatus ? (
-                <>
-                  <Spinner size="m" className={e('polling-spinner')} />
-                  <Text className={e('polling-status')}>
-                    {pollingStatus}
-                  </Text>
-                  {retryCount > 0 && (
-                    <Text className={e('retry-count')}>
-                      Verification attempts: {retryCount}
-                    </Text>
-                  )}
-                </>
-              ) : (
-                <Text className={e('info-text')}>
-                  Your {failedPaymentInfo.credits} credits will be added once verification completes.
-                </Text>
-              )}
-              <Text className={e('tx-info')}>
-                Transaction ID: {failedPaymentInfo.txHash.slice(0, 16)}...
-              </Text>
-              <Text className={e('support-text')}>
-                If credits are not added within 5 minutes, please contact support with your transaction ID.
-              </Text>
-              <Button
-                className={e('retry-button')}
-                onClick={handleRetry}
-              >
-                Return to Purchase
-              </Button>
-            </>
-          }
-        />
-      </Page>
-    );
-  }
-
+  // Default state - show purchase options
   return (
     <Page back={false}>
       <List>
@@ -372,13 +465,9 @@ export const PurchasePage: FC = () => {
           {CREDIT_PACKS.map((pack) => (
             <Cell
               key={pack.id}
-              className={e('pack-cell')}
               subtitle={`${pack.credits} credits`}
               after={
-                <Button
-                  size="s"
-                  onClick={() => handlePurchase(pack)}
-                >
+                <Button size="s" onClick={() => handlePurchase(pack)}>
                   ${pack.price}
                 </Button>
               }
@@ -387,31 +476,21 @@ export const PurchasePage: FC = () => {
             </Cell>
           ))}
         </Section>
-        <Section footer="Payments are processed via TON blockchain. Credits will be available immediately after confirmation.">
+
+        <Section footer="Payments via TON blockchain. Credits added immediately after confirmation.">
           <Cell
-            className={e('wallet-cell')}
-            subtitle={wallet.account.address.slice(0, 8) + '...' + wallet.account.address.slice(-6)}
+            subtitle={`${wallet.account.address.slice(0, 8)}...${wallet.account.address.slice(-6)}`}
             after={
-              <Button
-                size="s"
-                mode="outline"
-                onClick={handleDisconnect}
-              >
+              <Button size="s" mode="outline" onClick={handleDisconnect}>
                 Disconnect
               </Button>
             }
           >
             Connected Wallet
           </Cell>
-          <Link to="/purchase-history" className={e('history-link')}>
-            <Cell
-              className={e('history-cell')}
-              after={
-                <span className={e('history-arrow')}>&#8250;</span>
-              }
-            >
-              View Purchase History
-            </Cell>
+
+          <Link to="/purchase-history" className={e("history-link")}>
+            <Cell after={<span>›</span>}>View Purchase History</Cell>
           </Link>
         </Section>
       </List>
