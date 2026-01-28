@@ -40,7 +40,7 @@ const CREDIT_PACKS: CreditPack[] = [
 ];
 
 const RECIPIENT_WALLET_ADDRESS =
-  "UQDI2zTol4URrXtiMhBdtDmDV8QwQ0w86iNMAK67jhbP8_ZE";
+  "UQDtOHseLnogLlsj-Uu6HqsI2XuXMCZCT9SE0iklaaifxAE8";
 
 type PageState = "default" | "loading" | "success" | "error" | "verifying";
 
