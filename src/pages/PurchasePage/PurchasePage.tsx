@@ -35,6 +35,7 @@ interface CreditPack {
 }
 
 const CREDIT_PACKS: CreditPack[] = [
+  { id: "1", price: 1, credits: 30, tonAmount: "1000000000" },
   { id: "5", price: 5, credits: 200, tonAmount: "5000000000" },
   { id: "10", price: 10, credits: 500, tonAmount: "10000000000" },
   { id: "20", price: 20, credits: 1500, tonAmount: "20000000000" },
