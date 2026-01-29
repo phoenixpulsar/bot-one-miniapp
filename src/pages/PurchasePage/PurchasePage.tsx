@@ -53,10 +53,10 @@ interface PaymentInfo {
 }
 
 // Retry configuration
-const INITIAL_RETRY_DELAY = 5000; // 5 seconds
-const MAX_RETRY_DELAY = 30000; // 30 seconds
-const MAX_RETRIES = 20; // ~5 minutes total with exponential backoff
-const BLOCKCHAIN_CONFIRMATION_TIME = 30000; // Wait 30s before first retry
+const INITIAL_RETRY_DELAY = 3000; // 3 seconds
+const MAX_RETRY_DELAY = 15000; // 15 seconds
+const MAX_RETRIES = 30; // More retries with shorter delays
+const BLOCKCHAIN_CONFIRMATION_TIME = 5000; // Wait 5s before first retry (reduced from 30s)
 
 export const PurchasePage: FC = () => {
   const wallet = useTonWallet();
@@ -69,6 +69,7 @@ export const PurchasePage: FC = () => {
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [isManualRetrying, setIsManualRetrying] = useState<boolean>(false);
 
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
@@ -282,6 +283,30 @@ export const PurchasePage: FC = () => {
     await tonConnectUI.disconnect();
   }, [tonConnectUI, cleanup]);
 
+  // Manual retry handler
+  const handleManualRetry = useCallback(async () => {
+    if (!paymentInfo || !chatId || isManualRetrying) return;
+
+    setIsManualRetrying(true);
+    try {
+      const result = await retryPaymentVerification({
+        telegram_chat_id: chatId,
+        tx_hash: paymentInfo.txHash,
+      });
+
+      if (result.success || result.already_completed) {
+        cleanup();
+        setPageState("success");
+      }
+    } catch (error) {
+      if (error instanceof PaymentServiceError && !error.retry) {
+        setErrorMessage(error.message);
+      }
+    } finally {
+      setIsManualRetrying(false);
+    }
+  }, [paymentInfo, chatId, isManualRetrying, cleanup]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -409,6 +434,15 @@ export const PurchasePage: FC = () => {
                   TX: {paymentInfo.txHash.slice(0, 16)}...
                 </Text>
               )}
+              <Button
+                size="s"
+                mode="outline"
+                onClick={handleManualRetry}
+                disabled={isManualRetrying}
+                style={{ marginTop: "16px" }}
+              >
+                {isManualRetrying ? "Checking..." : "Check Now"}
+              </Button>
             </>
           }
         />
