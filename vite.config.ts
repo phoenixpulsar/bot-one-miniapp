@@ -2,14 +2,11 @@ import react from '@vitejs/plugin-react-swc';
 import { defineConfig } from 'vite';
 import mkcert from 'vite-plugin-mkcert';
 import tsconfigPaths from 'vite-tsconfig-paths';
-import { Buffer } from 'buffer';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // https://vitejs.dev/config/
 export default defineConfig({
   base: '/bot-one-miniapp/',
-  define: {
-    global: 'globalThis',
-  },
   css: {
     preprocessorOptions: {
       scss: {
@@ -18,6 +15,14 @@ export default defineConfig({
     },
   },
   plugins: [
+    // Polyfills Node.js core modules for browser compatibility (required by @ton/core)
+    // https://www.npmjs.com/package/vite-plugin-node-polyfills
+    nodePolyfills({
+      include: ['buffer'],
+      globals: {
+        Buffer: true,
+      },
+    }),
     // Allows using React dev server along with building a React application with Vite.
     // https://npmjs.com/package/@vitejs/plugin-react-swc
     react(),
