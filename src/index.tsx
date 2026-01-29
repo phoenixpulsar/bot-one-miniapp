@@ -1,7 +1,3 @@
-// Polyfill Buffer for browser environment (required by @ton/core)
-import { Buffer } from 'buffer';
-(window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
-
 // Include Telegram UI styles first to allow our code override the package CSS.
 import '@telegram-apps/telegram-ui/dist/styles.css';
 
