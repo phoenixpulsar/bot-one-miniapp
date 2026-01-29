@@ -204,11 +204,15 @@ export const PurchasePage: FC = () => {
           credits: pack.credits,
         });
 
-        // Try immediate verification
         // Convert sender address to raw format for consistent comparison with TON API
         const senderAddress = toRawAddress(wallet.account.address);
 
+        // Always go to verifying state first - never show success immediately
+        // This ensures we verify the payment is actually recorded before showing success
+        setPageState("verifying");
+
         try {
+          // Register the payment with the backend
           await confirmPayment({
             telegram_chat_id: chatId,
             tx_hash: txHash,
@@ -216,24 +220,24 @@ export const PurchasePage: FC = () => {
             sender_address: senderAddress,
           });
 
-          // Success on first try
-          setPageState("success");
-          return;
+          // Even if backend returns success, verify with retry endpoint to be sure
+          // Wait a moment then verify
+          setTimeout(() => {
+            setRetryCount(0);
+            attemptVerification(txHash, 0);
+          }, BLOCKCHAIN_CONFIRMATION_TIME);
         } catch (error) {
-          // If transaction not found, start retry loop
+          // If transaction not found yet (202), start retry loop
           if (error instanceof PaymentServiceError && error.retry) {
-            setPageState("verifying");
-
             // Wait for blockchain confirmation before starting retries
             setTimeout(() => {
               setRetryCount(0);
               attemptVerification(txHash, 0);
             }, BLOCKCHAIN_CONFIRMATION_TIME);
-
             return;
           }
 
-          // Other errors
+          // Other errors - but transaction was sent, so go to error state with tx info
           throw error;
         }
       } catch (error) {
