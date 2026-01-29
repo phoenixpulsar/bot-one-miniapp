@@ -21,6 +21,7 @@ import {
   retryPaymentVerification,
   PaymentServiceError,
 } from "@/services/paymentService.ts";
+import { extractTransactionHash } from "@/utils/tonUtils.ts";
 
 import "./PurchasePage.css";
 
@@ -192,8 +193,11 @@ export const PurchasePage: FC = () => {
 
         txResult = await tonConnectUI.sendTransaction(transaction);
 
+        // Extract the actual transaction hash from BOC
+        const txHash = extractTransactionHash(txResult.boc);
+
         setPaymentInfo({
-          txHash: txResult.boc,
+          txHash: txHash,
           amount: pack.price,
           credits: pack.credits,
         });
@@ -202,7 +206,7 @@ export const PurchasePage: FC = () => {
         try {
           await confirmPayment({
             telegram_chat_id: chatId,
-            tx_hash: txResult.boc,
+            tx_hash: txHash,
             amount_ton: pack.price.toString(),
             sender_address: wallet.account.address,
           });
@@ -218,7 +222,7 @@ export const PurchasePage: FC = () => {
             // Wait for blockchain confirmation before starting retries
             setTimeout(() => {
               setRetryCount(0);
-              attemptVerification(txResult!.boc, 0);
+              attemptVerification(txHash, 0);
             }, BLOCKCHAIN_CONFIRMATION_TIME);
 
             return;
@@ -232,8 +236,10 @@ export const PurchasePage: FC = () => {
 
         if (txResult) {
           // Transaction was sent but verification failed
+          // Extract the actual transaction hash from BOC for error reporting
+          const errorTxHash = extractTransactionHash(txResult.boc);
           setPaymentInfo({
-            txHash: txResult.boc,
+            txHash: errorTxHash,
             amount: pack.price,
             credits: pack.credits,
           });
