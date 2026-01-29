@@ -21,7 +21,7 @@ import {
   retryPaymentVerification,
   PaymentServiceError,
 } from "@/services/paymentService.ts";
-import { extractTransactionHash } from "@/utils/tonUtils.ts";
+import { extractTransactionHash, toRawAddress } from "@/utils/tonUtils.ts";
 
 import "./PurchasePage.css";
 
@@ -203,12 +203,15 @@ export const PurchasePage: FC = () => {
         });
 
         // Try immediate verification
+        // Convert sender address to raw format for consistent comparison with TON API
+        const senderAddress = toRawAddress(wallet.account.address);
+
         try {
           await confirmPayment({
             telegram_chat_id: chatId,
             tx_hash: txHash,
             amount_ton: pack.price.toString(),
-            sender_address: wallet.account.address,
+            sender_address: senderAddress,
           });
 
           // Success on first try
