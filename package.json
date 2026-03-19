@@ -15,6 +15,7 @@
     "predeploy": "npm run build"
   },
   "dependencies": {
+    "@telegram-apps/analytics": "^1.6.4",
     "@telegram-apps/telegram-ui": "^2.1.9",
     "@tma.js/sdk-react": "^3.0.8",
     "@ton/core": "^0.63.0",
