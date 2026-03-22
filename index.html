@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="theme-color" content="#000000"/>
     <title>Telegram Mini App</title>
+    <!-- Define initAnalytics before the async CDN script can fire onload -->
+    <script>
+      function initAnalytics() {
+        window.telegramAnalytics.init({
+          token: 'eyJhcHBfbmFtZSI6ImFza19wZGZfYWkiLCJhcHBfdXJsIjoiaHR0cHM6Ly90Lm1lL2Fza3BkZmFpYm90IiwiYXBwX2RvbWFpbiI6Imh0dHBzOi8vcGhvZW5peHB1bHNhci5naXRodWIuaW8vYm90LW9uZS1taW5pYXBwLyJ9!/FJU0SK+PZJroyF3nhy4TFhkDBXe9nk+4pHVuEgnCtM=',
+          appName: 'ask_pdf_ai',
+        });
+      }
+    </script>
     <!-- Add Telegram Analytics script to HTML head -->
     <script 
         async 
@@ -16,14 +25,6 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <script>
-      function initAnalytics() {
-        window.telegramAnalytics.init({
-          token: 'eyJhcHBfbmFtZSI6ImFza19wZGZfYWkiLCJhcHBfdXJsIjoiaHR0cHM6Ly90Lm1lL2Fza3BkZmFpYm90IiwiYXBwX2RvbWFpbiI6Imh0dHBzOi8vcGhvZW5peHB1bHNhci5naXRodWIuaW8vYm90LW9uZS1taW5pYXBwLyJ9!/FJU0SK+PZJroyF3nhy4TFhkDBXe9nk+4pHVuEgnCtM=',
-          appName: 'ask_pdf_ai',
-        });
-      }
-    </script> 
     <script src="/src/index.tsx" type="module"></script>
   
   </body>
