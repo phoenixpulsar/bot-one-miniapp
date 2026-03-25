@@ -20,15 +20,18 @@ export async function init(options: {
   eruda: boolean;
   mockForMacOS: boolean;
 }): Promise<void> {
-  // Initialize Telegram Analytics first to capture all events
+ 
+  // Set @telegram-apps/sdk-react debug mode and initialize it.
+  setDebug(options.debug);
+  initSDK();
+
+
+ // Initialize Telegram Analytics first to capture all events
   TelegramAnalytics.init({
     token: 'eyJhcHBfbmFtZSI6ImFza19wZGZfYWkiLCJhcHBfdXJsIjoiaHR0cHM6Ly90Lm1lL2Fza3BkZmFpYm90IiwiYXBwX2RvbWFpbiI6Imh0dHBzOi8vcGhvZW5peHB1bHNhci5naXRodWIuaW8vYm90LW9uZS1taW5pYXBwLyJ9!/FJU0SK+PZJroyF3nhy4TFhkDBXe9nk+4pHVuEgnCtM=',
     appName: 'ask_pdf_ai',
   });
 
-  // Set @telegram-apps/sdk-react debug mode and initialize it.
-  setDebug(options.debug);
-  initSDK();
 
   // Add Eruda if needed.
   options.eruda && void import('eruda').then(({ default: eruda }) => {
